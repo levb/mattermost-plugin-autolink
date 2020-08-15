@@ -15,7 +15,7 @@ import (
 	"github.com/mattermost/mattermost-plugin-autolink/server/autolinkplugin"
 )
 
-func setupTestPlugin(t *testing.T, l autolink.Autolink) *autolinkplugin.Plugin {
+func setupTestPlugin(tb testing.TB, ll ...autolink.Autolink) *autolinkplugin.Plugin {
 	p := autolinkplugin.New()
 	api := &plugintest.API{}
 
@@ -34,10 +34,13 @@ func setupTestPlugin(t *testing.T, l autolink.Autolink) *autolinkplugin.Plugin {
 
 	p.SetAPI(api)
 
-	err := l.Compile()
-	require.Nil(t, err)
+	for i, l := range ll {
+		err := l.Compile()
+		require.Nil(tb, err)
+		ll[i] = l
+	}
 	p.UpdateConfig(func(conf *autolinkplugin.Config) {
-		conf.Links = []autolink.Autolink{l}
+		conf.Links = ll
 	})
 	return p
 }
@@ -356,6 +359,36 @@ func TestLink(t *testing.T) {
 			},
 			"Welcome https://mattermost.atlassian.net/browse/MM-12345",
 			"Welcome [MM-12345](https://mattermost.atlassian.net/browse/MM-12345)",
+		}, {
+			"Disable in hyperlinks",
+			autolink.Autolink{
+				Pattern:             "XX-(?P<id>\\d+)",
+				Template:            "[XX-$id](https://x.y.z/XX-$id)",
+				WordMatch:           true,
+				DisableInHyperlinks: true,
+			},
+			"also [XX-12345](XX-12345) XX-12345, (XX-12345), XX-12345? :XX-12345.",
+			"also [XX-12345](XX-12345) [XX-12345](https://x.y.z/XX-12345), ([XX-12345](https://x.y.z/XX-12345)), [XX-12345](https://x.y.z/XX-12345)? :[XX-12345](https://x.y.z/XX-12345).",
+		},
+		{
+			"Enable in hyperlinks text",
+			autolink.Autolink{
+				Pattern:   "XX-(?P<id>\\d+)",
+				Template:  "[XX-$id](https://x.y.z/XX-$id)",
+				WordMatch: true,
+			},
+			"also (before XX-12345 after)[someurl] XX-12345, (XX-12345), XX-12345? :XX-12345.",
+			"also (before [XX-12345](https://x.y.z/XX-12345) after)[someurl] [XX-12345](https://x.y.z/XX-12345), ([XX-12345](https://x.y.z/XX-12345)), [XX-12345](https://x.y.z/XX-12345)? :[XX-12345](https://x.y.z/XX-12345).",
+		},
+		{
+			"Enable in hyperlinks URL",
+			autolink.Autolink{
+				Pattern:   "XX-(?P<id>\\d+)",
+				Template:  "[XX-$id](https://x.y.z/XX-$id)",
+				WordMatch: true,
+			},
+			"also (sometext)[https://x.y.z/XX-12345] XX-12345, (XX-12345), XX-12345? :XX-12345.",
+			"also (sometext)[https://x.y.z/[XX-12345](https://x.y.z/XX-12345)] [XX-12345](https://x.y.z/XX-12345), ([XX-12345](https://x.y.z/XX-12345)), [XX-12345](https://x.y.z/XX-12345)? :[XX-12345](https://x.y.z/XX-12345).",
 		},
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
